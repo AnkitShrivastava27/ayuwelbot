@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-from transformers import pipeline
+from huggingface_hub import InferenceClient
+import os, re
 from fastapi.middleware.cors import CORSMiddleware
-import re
+import traceback
 
 app = FastAPI()
 
-# CORS
+# Allow all CORS for development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,15 +16,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load FLAN-T5 pipeline
-flan_pipe = pipeline("text2text-generation", model="google/flan-t5-base")
+# Set your Hugging Face token as env variable or directly here
+api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+client = InferenceClient(api_key=api_key)
 
+# Define expected request body
 class ChatRequest(BaseModel):
     message: str
 
+# POST endpoint to handle chat requests
 @app.post("/chat")
 async def chat(request: ChatRequest):
     user_input = request.message.strip()
+    
     if not user_input:
         return {"response": "Please enter a valid medical question."}
 
@@ -33,13 +38,19 @@ async def chat(request: ChatRequest):
     )
 
     try:
-        result = flan_pipe(prompt, max_new_tokens=100)[0]["generated_text"]
-        result = re.sub(r"<.*?>", "", result)
-        result = re.sub(r"\s+", " ", result)
-        disclaimer = " As I'm an AI model, always consult a licensed doctor for serious conditions."
+        response = client.text_generation(
+    model="google/flan-t5-base",
+    inputs=prompt,
+    max_new_tokens=100
+)
 
-        return {"response": result + disclaimer}
+
+        output = response.strip()
+        output = re.sub(r"<.*?>", "", output)
+        output = re.sub(r"\s+", " ", output)
+        disclaimer = " As I'm an AI model, please consult a licensed doctor for serious health concerns."
+
+        return {"response": output + disclaimer}
 
     except Exception as e:
-        import traceback
         return {"error": str(e), "trace": traceback.format_exc()}
