@@ -18,19 +18,22 @@ class ChatRequest(BaseModel):
 async def chat(request: ChatRequest):
     user_input = request.message
 
+    # Mistral-style system + instruction prompt
     system_prompt = (
         "You are a professional medical assistant. Only respond to medical questions. "
         "Keep it concise: 3–4 lines or ~50–60 words. No storytelling. "
         "If not medical, respond: 'I'm only able to assist with medical-related questions.'"
     )
 
-    prompt = f"{system_prompt}\nPatient: {user_input}\nAssistant:"
+    prompt = f"[INST] <<SYS>> {system_prompt} <</SYS>> {user_input} [/INST]"
+
     try:
         response = client.text_generation(
-            model="stanford-crfm/BioMedLM",
+            model="mistralai/Mistral-7B-Instruct-v0.1",
             prompt=prompt,
-            max_new_tokens=100,
-            temperature=0.3
+            max_new_tokens=120,
+            temperature=0.3,
+            do_sample=True
         )
         answer = response.strip()
         answer = re.sub(r"<.*?>", "", answer)
