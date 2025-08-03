@@ -38,11 +38,12 @@ async def chat(request: ChatRequest):
     )
 
     try:
-        response = client.text_generation(
-            model="google/flan-t5-base",  # ✅ Free & Supported
-            prompt=prompt,
-            max_new_tokens=100
-        )
+        response = client.text2text_generation(
+    model="google/flan-t5-base",
+    inputs=prompt,
+    max_new_tokens=100
+)
+
 
         output = response.strip()
         output = re.sub(r"<.*?>", "", output)
