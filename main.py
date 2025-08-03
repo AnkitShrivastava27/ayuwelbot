@@ -38,7 +38,7 @@ async def chat(request: ChatRequest):
     )
 
     try:
-        response = client.text2text_generation(
+        response = client.text_generation(
     model="google/flan-t5-base",
     inputs=prompt,
     max_new_tokens=100
