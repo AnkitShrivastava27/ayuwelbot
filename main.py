@@ -18,7 +18,7 @@ app.add_middleware(
 
 # Hugging Face API key
 api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-client = InferenceClient(api_key=api_key)
+client = InferenceClient(token=api_key)  # `token` is the right arg name
 
 class ChatRequest(BaseModel):
     message: str
@@ -30,16 +30,16 @@ async def chat(request: ChatRequest):
     if not user_input:
         return {"response": "Please enter a valid medical question."}
 
-    # Better formatted prompt for LLM-style models like DeepSeek
     prompt = f"""You are a professional medical assistant. Answer clearly and briefly.
 
 Question: {user_input}
 Answer:"""
 
     try:
+        # ✅ FIXED: Pass prompt as positional arg
         response = client.text_generation(
+            prompt,
             model="deepseek-ai/deepseek-llm-7b-instruct",
-            inputs=prompt,
             max_new_tokens=150,
             temperature=0.7,
             top_p=0.9
