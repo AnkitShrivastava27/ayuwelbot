@@ -31,7 +31,9 @@ async def chat(request: ChatRequest):
             "role": "system",
             "content": (
                 "You are a professional medical assistant. Only respond to medical-related questions. "
-                "If the question is not medical, simply respond: 'I'm only able to assist with medical-related questions.'"
+                "Keep your response concise, limited to 3–4 lines or 50–60 words maximum. "
+                "Avoid lengthy explanations or storytelling. "
+                "If the question is not medical, reply: 'I'm only able to assist with medical-related questions.'"
             )
         },
         {"role": "user", "content": user_input}
@@ -45,6 +47,10 @@ async def chat(request: ChatRequest):
         )
         final_answer = response.choices[0].message.content
         clean_answer = re.sub(r"<think>.*?</think>", "", final_answer, flags=re.DOTALL).strip()
-        return {"response": clean_answer}
+
+        # Add disclaimer
+        disclaimer = " As I'm a general chatbot model, in severe cases please consult a doctor."
+        return {"response": clean_answer + disclaimer}
+
     except Exception as e:
         return {"error": str(e)}
