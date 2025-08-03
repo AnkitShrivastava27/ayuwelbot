@@ -6,42 +6,49 @@ from fastapi.middleware.cors import CORSMiddleware
 import traceback
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"],
-                   allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+# Allow all CORS for development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Set your Hugging Face token as env variable or directly here
 api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 client = InferenceClient(api_key=api_key)
 
+# Define expected request body
 class ChatRequest(BaseModel):
     message: str
 
+# POST endpoint to handle chat requests
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    user_input = request.message
+    user_input = request.message.strip()
+    
+    if not user_input:
+        return {"response": "Please enter a valid medical question."}
 
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a professional medical assistant. Only answer medical questions. "
-                "Keep your response concise—3–4 lines or 60 words max. "
-                "If the question is not medical, say: 'I'm only able to assist with medical-related questions.'"
-            )
-        },
-        {"role": "user", "content": user_input}
-    ]
+    prompt = (
+        "You are a professional medical assistant. Answer clearly and briefly.\n"
+        f"Question: {user_input}\nAnswer:"
+    )
 
     try:
-        resp = client.chat.completions.create(
-            model="HuggingFaceH4/zephyr-7b-beta",
-            messages=messages,
-            stream=False,
-            max_tokens=120
+        response = client.text_generation(
+            model="google/flan-t5-base",  # ✅ Free & Supported
+            prompt=prompt,
+            max_new_tokens=100
         )
-        output = resp.choices[0].message.content.strip()
+
+        output = response.strip()
         output = re.sub(r"<.*?>", "", output)
         output = re.sub(r"\s+", " ", output)
-        disclaimer = " As I'm a general chatbot model, please consult a doctor for serious conditions."
+        disclaimer = " As I'm an AI model, please consult a licensed doctor for serious health concerns."
+
         return {"response": output + disclaimer}
 
     except Exception as e:
