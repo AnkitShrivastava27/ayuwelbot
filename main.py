@@ -7,10 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# CORS (Flutter access)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with your Flutter frontend domain if needed
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,7 +48,8 @@ async def chat(request: ChatRequest):
         final_answer = response.choices[0].message.content
         clean_answer = re.sub(r"<think>.*?</think>", "", final_answer, flags=re.DOTALL).strip()
 
-        # Add disclaimer
+        clean_answer = re.sub(r"<.*?>", "", clean_answer).strip()  
+        clean_answer = re.sub(r"\s+", " ", clean_answer)  
         disclaimer = " As I'm a general chatbot model, in severe cases please consult a doctor."
         return {"response": clean_answer + disclaimer}
 
