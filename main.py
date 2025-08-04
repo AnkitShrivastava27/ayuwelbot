@@ -16,7 +16,11 @@ app.add_middleware(
 )
 
 api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+if not api_token:
+    raise ValueError("HUGGINGFACEHUB_API_TOKEN not set.")
+
 client = InferenceClient(token=api_token)
+model_name = "prithivMLmods/Deepthink-Llama-3-8B-Preview"
 
 class ChatRequest(BaseModel):
     message: str
@@ -27,26 +31,20 @@ async def chat(request: ChatRequest):
     if not user_input:
         return {"response": "Please enter a valid question."}
 
-    prompt = (
-        "You are a professional medical assistant. Answer clearly and briefly.\n"
-        f"Question: {user_input}\nAnswer:"
-    )
-
     try:
-        # Use prompt as positional argument and the correct model ID
-        result = client.text_generation(
-            prompt,
-            model="prithivMLmods/Deepthink-Llama-3-8B-Preview",
+        result = client.chat_conversational(
+            model=model_name,
+            messages=[{"role": "user", "content": user_input}],
             max_new_tokens=150,
             temperature=0.7,
             top_p=0.9,
         )
 
-        output = result.strip()
+        output = result.strip() if isinstance(result, str) else result.get("generated_text", "")
         output = re.sub(r"<.*?>", "", output)
         output = re.sub(r"\s+", " ", output)
-        disclaimer = " As I'm an AI model, please consult a licensed doctor for serious health concerns."
 
+        disclaimer = " As I'm an AI model, please consult a licensed doctor for serious health concerns."
         return {"response": output + disclaimer}
 
     except Exception as e:
