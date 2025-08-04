@@ -1,7 +1,9 @@
 fastapi
 uvicorn
-huggingface_hub
 python-dotenv
-
-fastapi
+langchain
+langchain-community
+openai
+tiktoken
+requests
 pydantic

@@ -1,51 +1,77 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from huggingface_hub import InferenceClient
-import os, re
-from fastapi.middleware.cors import CORSMiddleware
-import traceback
+from dotenv import load_dotenv
+from langchain_community.chat_models import AzureChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains import LLMChain
+from langchain.memory import ConversationSummaryBufferMemory
+
+# Load environment variables from .env
+load_dotenv()
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+# Azure OpenAI setup
+llm_model = AzureChatOpenAI(
+    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
+    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+    api_key=os.getenv("AZURE_OPENAI_KEY"),
+    api_version=os.getenv("AZURE_OPENAI_VERSION"),
+    temperature=0.7,
+    top_p=0.9,
+    max_tokens=100,
 )
 
-api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-if not api_token:
-    raise ValueError("HUGGINGFACEHUB_API_TOKEN not set.")
+# Prompt template
+chat_prompt = ChatPromptTemplate.from_template("""
+You are a helpful assistant.
+{chat_history}
+User question: {question}
+Answer:
+""")
 
-client = InferenceClient(token=api_token)
-model_name = "prithivMLmods/Deepthink-Llama-3-8B-Preview"
+# Memory setup (global memory for demo; in production use session IDs)
+memory = ConversationSummaryBufferMemory(
+    llm=llm_model,
+    max_token_limit=1000,
+    return_messages=True,
+    input_key="question",
+    output_key="text",
+    memory_key="chat_history",
+)
 
+# LangChain chain
+llm_chain = LLMChain(
+    llm=llm_model,
+    prompt=chat_prompt,
+    memory=memory,
+)
+
+# Define input schema
 class ChatRequest(BaseModel):
-    message: str
+    question: str
 
+# API endpoint
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    user_input = request.message.strip()
-    if not user_input:
-        return {"response": "Please enter a valid question."}
-
     try:
-        result = client.chat_conversational(
-            model=model_name,
-            messages=[{"role": "user", "content": user_input}],
-            max_new_tokens=150,
-            temperature=0.7,
-            top_p=0.9,
-        )
+        user_input = request.question.strip()
+        if not user_input:
+            return {"response": "Please enter a valid question."}
 
-        output = result.strip() if isinstance(result, str) else result.get("generated_text", "")
-        output = re.sub(r"<.*?>", "", output)
-        output = re.sub(r"\s+", " ", output)
+        result = llm_chain.invoke({"question": user_input})
+        response = result["text"]
 
-        disclaimer = " As I'm an AI model, please consult a licensed doctor for serious health concerns."
-        return {"response": output + disclaimer}
+        return {
+            "response": response,
+            "chat_history": memory.chat_memory.messages,  # optional, returns full memory
+        }
 
     except Exception as e:
-        return {"error": str(e), "trace": traceback.format_exc()}
+        return {"error": str(e)}
+
+# Optional health check endpoint
+@app.get("/")
+def read_root():
+    return {"message": "Azure GPT Chat API is running"}
