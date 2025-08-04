@@ -1,58 +1,32 @@
-import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
-from dotenv import load_dotenv
-from langchain_community.chat_models import AzureChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.chains import LLMChain
-from langchain.memory import ConversationSummaryBufferMemory
-
-# Load environment variables from .env
-load_dotenv()
+from huggingface_hub import InferenceClient
+import os, re
+from fastapi.middleware.cors import CORSMiddleware
+import traceback
 
 app = FastAPI()
 
-# Azure OpenAI setup
-llm_model = AzureChatOpenAI(
-    azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_VERSION"),
-    temperature=0.7,
-    top_p=0.9,
-    max_tokens=100,
+# CORS for Flutter or Web
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # in production, set your frontend domain here
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Prompt template
-chat_prompt = ChatPromptTemplate.from_template("""
-You are a helpful assistant.
-{chat_history}
-User question: {question}
-Answer:
-""")
+# Replace Azure with Hugging Face
+api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+if not api_token:
+    raise ValueError("Set HUGGINGFACEHUB_API_TOKEN in env variables")
 
-# Memory setup (global memory for demo; in production use session IDs)
-memory = ConversationSummaryBufferMemory(
-    llm=llm_model,
-    max_token_limit=1000,
-    return_messages=True,
-    input_key="question",
-    output_key="text",
-    memory_key="chat_history",
-)
+client = InferenceClient(token=api_token)
+model_name = "HuggingFaceH4/zephyr-7b-beta"  # Free and supports text generation
 
-# LangChain chain
-llm_chain = LLMChain(
-    llm=llm_model,
-    prompt=chat_prompt,
-    memory=memory,
-)
-
-# Define input schema
 class ChatRequest(BaseModel):
     question: str
 
-# API endpoint
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
@@ -60,18 +34,25 @@ async def chat(request: ChatRequest):
         if not user_input:
             return {"response": "Please enter a valid question."}
 
-        result = llm_chain.invoke({"question": user_input})
-        response = result["text"]
+        prompt = f"<|user|>\n{user_input}\n<|assistant|>\n"
 
-        return {
-            "response": response,
-            "chat_history": memory.chat_memory.messages,  # optional, returns full memory
-        }
+        result = client.text_generation(
+            prompt=prompt,
+            model=model_name,
+            max_new_tokens=200,
+            temperature=0.7,
+            top_p=0.9,
+        )
+
+        output = result.strip()
+        output = re.sub(r"<.*?>", "", output)
+        output = re.sub(r"\s+", " ", output)
+
+        return {"response": output}
 
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "trace": traceback.format_exc()}
 
-# Optional health check endpoint
 @app.get("/")
-def read_root():
-    return {"message": "Azure GPT Chat API is running"}
+def root():
+    return {"message": "Free Hugging Face Chat API is running."}
