@@ -1,58 +1,70 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from huggingface_hub import InferenceClient
-import os, re
+import os
+import re
 from fastapi.middleware.cors import CORSMiddleware
 import traceback
 
 app = FastAPI()
 
-# CORS for Flutter or Web
+# Allow Flutter and other frontends to access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # in production, set your frontend domain here
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Replace Azure with Hugging Face
-api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
-if not api_token:
-    raise ValueError("Set HUGGINGFACEHUB_API_TOKEN in env variables")
-
-client = InferenceClient(token=api_token)
-model_name = "HuggingFaceH4/zephyr-7b-beta"  # Free and supports text generation
+# Load Hugging Face API token
+api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+client = InferenceClient(api_key=api_key)
 
 class ChatRequest(BaseModel):
-    question: str
+    message: str
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
+    user_input = request.message
+
+    # System + User message for Zephyr-style chat model
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a professional medical assistant. Only answer medical-related questions. "
+                "Do not repeat the user's question. Keep your response brief—3–4 lines or under 60 words. "
+                "Avoid storytelling or follow-up prompts. If the question is not medical, say: "
+                "'I'm only able to assist with medical-related questions.'"
+            )
+        },
+        {"role": "user", "content": user_input}
+    ]
+
     try:
-        user_input = request.question.strip()
-        if not user_input:
-            return {"response": "Please enter a valid question."}
-
-        prompt = f"<|user|>\n{user_input}\n<|assistant|>\n"
-
-        result = client.text_generation(
-            prompt=prompt,
-            model=model_name,
-            max_new_tokens=200,
-            temperature=0.7,
-            top_p=0.9,
+        response = client.chat.completions.create(
+            model="HuggingFaceH4/zephyr-7b-beta",
+            messages=messages,
+            max_tokens=120,
+            temperature=0.5,
+            stream=False
         )
 
-        output = result.strip()
-        output = re.sub(r"<.*?>", "", output)
-        output = re.sub(r"\s+", " ", output)
+        final_answer = response.choices[0].message.content
 
-        return {"response": output}
+        # Remove unnecessary junk or prompts
+        clean = re.sub(r"<.*?>|\[/?[A-Z]+\]", "", final_answer)  # Remove <tags> and [INST] stuff
+        clean = re.sub(r"(?i)(you asked|user:|question:).*", "", clean)  # Avoid echoed input
+        clean = re.sub(r"\s+", " ", clean).strip()
+
+        # Trim to first 3–4 sentences only
+        sentences = re.split(r'(?<=[.!?]) +', clean)
+        short_reply = " ".join(sentences[:4])
+
+        disclaimer = " As I'm a general chatbot model, please consult a doctor for serious conditions."
+
+        return {"response": short_reply + disclaimer}
 
     except Exception as e:
         return {"error": str(e), "trace": traceback.format_exc()}
-
-@app.get("/")
-def root():
-    return {"message": "Free Hugging Face Chat API is running."}

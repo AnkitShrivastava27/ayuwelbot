@@ -3,3 +3,7 @@ uvicorn
 python-dotenv
 huggingface_hub
 pydantic
+python-multipart
+requests
+aiofiles
+httpx
